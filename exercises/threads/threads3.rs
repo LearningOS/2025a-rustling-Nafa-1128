@@ -3,10 +3,9 @@
 // Execute `rustlings hint threads3` or use the `hint` watch subcommand for a
 // hint.
 
-// I AM NOT DONE
+
 
 use std::sync::mpsc;
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -26,26 +25,33 @@ impl Queue {
     }
 }
 
-fn send_tx(q: Queue, tx: mpsc::Sender<u32>) -> () {
-    let qc = Arc::new(q);
-    let qc1 = Arc::clone(&qc);
-    let qc2 = Arc::clone(&qc);
+// 启动线程发送数据，返回线程句柄
+fn send_tx(q: Queue, tx: mpsc::Sender<u32>) -> Vec<thread::JoinHandle<()>> {
+    let mut handles = vec![];
 
-    thread::spawn(move || {
-        for val in &qc1.first_half {
+    // 线程 1 发送 first_half
+    let tx1 = tx.clone();
+    let first_half = q.first_half;
+    handles.push(thread::spawn(move || {
+        for val in first_half {
             println!("sending {:?}", val);
-            tx.send(*val).unwrap();
+            tx1.send(val).unwrap();
             thread::sleep(Duration::from_secs(1));
         }
-    });
+    }));
 
-    thread::spawn(move || {
-        for val in &qc2.second_half {
+    // 线程 2 发送 second_half
+    let tx2 = tx.clone();
+    let second_half = q.second_half;
+    handles.push(thread::spawn(move || {
+        for val in second_half {
             println!("sending {:?}", val);
-            tx.send(*val).unwrap();
+            tx2.send(val).unwrap();
             thread::sleep(Duration::from_secs(1));
         }
-    });
+    }));
+
+    handles
 }
 
 fn main() {
@@ -53,8 +59,15 @@ fn main() {
     let queue = Queue::new();
     let queue_length = queue.length;
 
-    send_tx(queue, tx);
+    // 启动发送线程并获取句柄
+    let handles = send_tx(queue, tx);
 
+    // 等待发送线程完成
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    // 收取所有数字
     let mut total_received: u32 = 0;
     for received in rx {
         println!("Got: {}", received);
@@ -62,5 +75,5 @@ fn main() {
     }
 
     println!("total numbers received: {}", total_received);
-    assert_eq!(total_received, queue_length)
+    assert_eq!(total_received, queue_length);
 }
